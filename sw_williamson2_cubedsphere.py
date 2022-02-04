@@ -8,6 +8,8 @@ from mpi4py import MPI
 import sys
 import argparse
 import logging
+from ksp_monitor import *
+from transfer_kernels import prolongation_matrix
 
 from firedrake.petsc import PETSc
 PETSc.Sys.popErrorHandler()
@@ -48,7 +50,7 @@ parser.add_argument('--tfinal',
 
 parser.add_argument('--nrefine',
                     type=int,
-                    default=3,
+                    default=4,
                     help='mesh refinement level, has to be > 1 for flat geometry')
 
 parser.add_argument('--solver',
@@ -70,6 +72,11 @@ parser.add_argument('--coarse_space',
                     choices=(None,'DG0','P1'),
                     default=None,
                     help='select coarse space to use on nonnested coarse system')
+
+parser.add_argument('--ksp_verbosity',
+                    type=int,
+                    default=0,
+                    help='verbosity of KSP solvers. 0: no output, 1: summary, 2: full output')
 
 args, unknown = parser.parse_known_args()
 
@@ -113,46 +120,46 @@ appctx = {}
 if (args.solver == 'direct'):
     solver_parameters = {'mat_type': 'aij',
                          'ksp_type': 'preonly',
+                        #  'ksp_view': None,
                          'pc_type': 'lu',
                          'pc_factor_mat_solver_type': 'mumps'}
 elif (args.solver == 'pressure_multigrid'):
     solver_parameters = {'ksp_type': 'gmres',
-                         'ksp_rtol': args.solver_rtol,
-                         'pc_type': 'fieldsplit',
-                         'pc_fieldsplit_type': 'schur',
-                         'pc_fieldsplit_schur_fact_type': 'FULL',
-                         'pc_fieldsplit_schur_precondition': 'selfp',
-                         'fieldsplit_0': {'ksp_type': 'preonly',
-                                          'pc_type': 'bjacobi',
-                                          'sub_pc_type': 'ilu'},
-                         'fieldsplit_1': {'ksp_type': 'preonly',
-                                          'pc_type': 'gamg',
-                                          'pc_mg_log': None,
-                                          'mg_levels': {'ksp_type': 'chebyshev',
-                                                        'ksp_max_it': 2,
-                                                        'pc_type': 'bjacobi',
-                                                        'sub_pc_type': 'sor'}}}      
+                    'ksp_rtol': args.solver_rtol,
+                    'pc_type': 'fieldsplit',
+                    'pc_fieldsplit_type': 'schur',
+                    'pc_fieldsplit_schur_fact_type': 'FULL',
+                    'pc_fieldsplit_schur_precondition': 'selfp',
+                    'fieldsplit_0': {'ksp_type': 'preonly',
+                                    'pc_type': 'bjacobi',
+                                    'sub_pc_type': 'ilu'},
+                    'fieldsplit_1': {'ksp_type': 'preonly',
+                                    'pc_type': 'hypre',
+                                    'pc_mg_log': None,
+                                    'mg_levels': {'ksp_type': 'richardson',
+                                                    'ksp_richardson_scale':0.6,
+                                                    'ksp_max_it': 2,
+                                                    'pc_type':'jacobi'}}} 
 elif (args.solver == 'hybridised_amg'):
     solver_parameters = {'ksp_type': 'preonly',
-                         'mat_type': 'matfree',
-                         'pc_type': 'python',
-                         'pc_python_type': 'firedrake.HybridizationPC',
-                         # Solver for the trace system
-                         'hybridization': {'ksp_type': 'gmres',
-                                           'pc_type': 'gamg',
-                                           'pc_gamg_sym_graph': True,
-                                           'ksp_rtol': args.solver_rtol,
-                                           'mg_levels': {'ksp_type': 'richardson',
-                                                         'ksp_max_it': 5,
-                                                         'pc_type': 'bjacobi',
-                                                         'sub_pc_type': 'ilu'}}}
+                    'mat_type': 'matfree',
+                    'pc_type': 'python',
+                    'pc_python_type': 'firedrake.HybridizationPC',
+                    # Solver for the trace system
+                    'hybridization': {'ksp_type': 'bcgs',
+                                        'pc_type': 'hypre',
+                                        'ksp_rtol': args.solver_rtol,
+                                        'mg_levels': {'ksp_type': 'richardson',
+                                                    'ksp_richardson_scale':0.6,
+                                                    'ksp_max_it': 2,
+                                                    'pc_type': 'jacobi'}}}
 elif (args.solver == 'hybridised_nonnested'):
     if (args.coarse_solver == 'exact'):
         coarse_param = {'ksp_type': 'preonly',
                         'pc_type': 'lu'}                
     elif (args.coarse_solver == 'amg'):
         coarse_param = {'ksp_type': 'preonly',
-                        'pc_type': 'gamg',
+                        'pc_type': 'hypre',
                         'pc_gamg_sym_graph': True,
                         'mg_levels': {'ksp_type': 'richardson',
                                                   'ksp_max_it': 2,
@@ -167,10 +174,11 @@ elif (args.solver == 'hybridised_nonnested'):
                                       'ksp_max_it': 2,
                                       'pc_type': 'bjacobi',
                                       'sub_pc_type': 'sor'},
-                                      'mg_coarse': {'ksp_type': 'chebyshev',
-                                                    'ksp_max_it': 2,
-                                                    'pc_type': 'bjacobi',
-                                                    'sub_pc_type': 'sor'}}
+                        # 'mg_coarse': {'ksp_type': 'chebyshev',
+                        #               'ksp_max_it': 2,
+                        #               'pc_type': 'bjacobi',
+                        #               'sub_pc_type': 'sor'}}
+                        }
     else:
         raise Exception('Unknown coarse solver type: ' + args.coarse_solver)            
     
@@ -179,16 +187,16 @@ elif (args.solver == 'hybridised_nonnested'):
                          'pc_type': 'python',
                          'pc_python_type': 'firedrake.HybridizationPC',
                          # Solver for the trace system
-                         'hybridization': {'ksp_type': 'gmres',
+                         'hybridization': {'ksp_type': 'bcgs',
                                            'pc_type': 'python',
                                            'ksp_rtol': args.solver_rtol,
                                            'pc_python_type': 'firedrake.GTMGPC',
                                            'gt': {'mat_type': 'aij',
                                                   'pc_mg_log': None,
                                                   'mg_levels': {'ksp_type': 'chebyshev',
+                                                                #'ksp_richardson_scale':0.6,
                                                                 'ksp_max_it': 2,
-                                                                'pc_type': 'bjacobi',
-                                                                'sub_pc_type':'sor'},
+                                                                'pc_type': 'sor'},
                                                   'mg_coarse': coarse_param}}}
 else:
     raise Exception('Unknown solver type: '+args.solver)
@@ -293,8 +301,12 @@ for ref_level, dt in ref_dt.items():
         else:
             raise Exception('Unknown coarse space: '+args.coarse_space)
 
+        V_trace = FunctionSpace(mesh, "HDiv Trace", args.degree)
+        interpolation_matrix = prolongation_matrix(V_trace,get_coarse_space())
+
         appctx = {'get_coarse_operator': coarse_callback,
-                  'get_coarse_space': get_coarse_space}
+                  'get_coarse_space': get_coarse_space,
+                  'interpolation_matrix':interpolation_matrix}
 
     # interpolate initial conditions
     u0 = state.fields("u")
@@ -322,10 +334,29 @@ for ref_level, dt in ref_dt.items():
     advected_fields.append(("u", ThetaMethod(state, u0, ueqn)))
     advected_fields.append(("D", SSPRK3(state, D0, Deqn, subcycles=2)))
 
+    # Do this before if hybridized utilising custom monitor hook in
+    # HybridizationPC
+    # Create custom monitor and add to appctx
+
+    if 'hybridised' in args.solver:
+        ksp_monitor = KSPMonitor(label='hybridised_linear_solve',
+                                 comm=mesh.comm,
+                                 verbose=args.ksp_verbosity)
+        appctx['custom_monitor'] = ksp_monitor
+
+
     linear_solver = ShallowWaterSolver(state,
                                        solver_parameters=solver_parameters,
                                        overwrite_solver_parameters=True,
                                        appctx=appctx)
+
+    # If hybridised also monitor trace convergence
+
+    if 'hybridised' not in args.solver:
+        ksp_monitor = KSPMonitor(label='linear_solve',
+                                 comm=mesh.comm,
+                                 verbose=args.ksp_verbosity)
+        linear_solver.uD_solver.snes.ksp.setMonitor(ksp_monitor)
 
     # Set up forcing
     sw_forcing = ShallowWaterForcing(state)
@@ -334,4 +365,6 @@ for ref_level, dt in ref_dt.items():
     stepper = CrankNicolson(state, advected_fields, linear_solver,
                             sw_forcing)
 
-    stepper.run(t=0, tmax=tmax)
+    with ksp_monitor:
+
+        stepper.run(t=0, tmax=tmax)
