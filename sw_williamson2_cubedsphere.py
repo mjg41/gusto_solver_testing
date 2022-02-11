@@ -29,10 +29,10 @@ pprint ('Running on '+str(comm_size)+' processors')
 # Parse command line options
 parser = argparse.ArgumentParser(allow_abbrev=False)
 
-parser.add_argument('--testing',
-                    action='store_true',
+parser.add_argument('--conv_study',
+                    action='store_false',
                     default=False,
-                    help='testing runs only for a short time without convergence test')
+                    help='do you want a convergence study?')
 
 parser.add_argument('--degree',
                     type=int,
@@ -93,11 +93,11 @@ if (args.solver == 'hybridised_nonnested'):
 day = 24.*60.*60.
 
 # setup resolution and timestepping parameters for convergence test
-if args.testing:
+if not args.conv_study:
     ref_dt = {args.nrefine: 3000.}
-    tmax = 3000.
+    # tmax = 3000.
     # ref_dt = {args.nrefine: 500.}
-    # tmax = day
+    tmax = day
 
 else:
     # setup resolution and timestepping parameters for convergence test
@@ -113,7 +113,7 @@ H = 5960.
 # setup input that doesn't change with ref level or dt
 fieldlist = ['u', 'D']
 parameters = ShallowWaterParameters(H=H)
-cg = day / R * np.sqrt(parameters.g*H)
+cg = np.sqrt(parameters.g*H)
 
 # setup solver parameters
 
@@ -341,7 +341,7 @@ for ref_level, dt in ref_dt.items():
     Deqn = AdvectionEquation(state, D0.function_space(), equation_form="continuity")
     advected_fields = []
     advected_fields.append(("u", ThetaMethod(state, u0, ueqn)))
-    advected_fields.append(("D", SSPRK3(state, D0, Deqn, subcycles=2)))
+    advected_fields.append(("D", SSPRK3(state, D0, Deqn, subcycles=10)))
 
     # Do this before if hybridized utilising custom monitor hook in
     # HybridizationPC
