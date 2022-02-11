@@ -22,8 +22,8 @@ global_normal = x
 mesh.init_cell_orientations(x)
 
 # Create function space
-degree = 2
-Q = FunctionSpace(mesh, 'CG', 1)
+degree = 1
+Q = FunctionSpace(mesh, 'CG', degree)
 
 # Create smooth function
 
@@ -36,10 +36,6 @@ sum_of_gaussians = (gaussian(0., 0., 1., 1., 10.) +
                    gaussian(-0.9, -0.85, 5., 3., 5.))
 
 f = Function(Q).project(sum_of_gaussians)
-
-# Save output
-outfile = File('output/no_interp.pvd')
-outfile.write(f)
 
 # Now apply interpolation to sum of gaussians
 
