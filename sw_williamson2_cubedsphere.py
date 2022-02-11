@@ -1,7 +1,8 @@
 from gusto import *
-from firedrake import (CubedSphereMesh, SpatialCoordinate,
-                       as_vector, FunctionSpace, TrialFunction,
-                       TestFunction, inner, grad, dx, dS)
+# from firedrake import (CubedSphereMesh, SpatialCoordinate,
+#                        as_vector, FunctionSpace, TrialFunction,
+#                        TestFunction, inner, grad, dx, dS)
+from firedrake import *
 from math import pi
 import numpy as np
 from mpi4py import MPI
@@ -50,7 +51,7 @@ parser.add_argument('--tfinal',
 
 parser.add_argument('--nrefine',
                     type=int,
-                    default=4,
+                    default=3,
                     help='mesh refinement level, has to be > 1 for flat geometry')
 
 parser.add_argument('--solver',
@@ -95,6 +96,9 @@ day = 24.*60.*60.
 if args.testing:
     ref_dt = {args.nrefine: 3000.}
     tmax = 3000.
+    # ref_dt = {args.nrefine: 500.}
+    # tmax = day
+
 else:
     # setup resolution and timestepping parameters for convergence test
     ref_dt = {(args.nrefine): 4000., (args.nrefine + 1): 2000.,
@@ -156,7 +160,7 @@ elif (args.solver == 'hybridised_amg'):
 elif (args.solver == 'hybridised_nonnested'):
     if (args.coarse_solver == 'exact'):
         coarse_param = {'ksp_type': 'preonly',
-                        'pc_type': 'lu'}                
+                        'pc_type': 'lu'}
     elif (args.coarse_solver == 'amg'):
         coarse_param = {'ksp_type': 'preonly',
                         'pc_type': 'hypre',
@@ -168,8 +172,7 @@ elif (args.solver == 'hybridised_nonnested'):
     elif (args.coarse_solver == 'gmg'):
         coarse_param = {'ksp_type': 'preonly',
                         'pc_type': 'mg',
-                        'pc_mg_levels':2,
-                        'pc_mg_cycles': 'v',
+                        'pc_mg_cycle_type': 'v',
                         'mg_levels': {'ksp_type': 'chebyshev',
                                       'ksp_max_it': 2,
                                       'pc_type': 'bjacobi',
@@ -206,7 +209,13 @@ for ref_level, dt in ref_dt.items():
     # Setup output directory
     dirname = "sw_W2_ref%s_dt%s" % (ref_level, dt)
 
-    # Define mesh
+    # Define mesh - need a mesh hierarchy for gmg
+    # m = CubedSphereMesh(radius=R,
+    #                     refinement_level=ref_level,
+    #                     degree=args.mesh_degree)
+    # nlevels = 1
+    # mh = MeshHierarchy(m, nlevels)
+    # mesh = mh[-1]
     mesh = CubedSphereMesh(radius=R,
                            refinement_level=ref_level,
                            degree=args.mesh_degree)
