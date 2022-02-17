@@ -1,5 +1,6 @@
 from firedrake import *
 import argparse
+import transfer_kernels
 
 '''
 =======================================================
@@ -35,9 +36,8 @@ def run_gtmg_mixed_poisson(args):
         q = TestFunction(P1)
         return inner(grad(p), grad(q))*dx
 
-    degree = 1
-    RT = FunctionSpace(mesh, "RT", degree)
-    DG = FunctionSpace(mesh, "DG", degree - 1)
+    RT = FunctionSpace(mesh, "RT", args.degree)
+    DG = FunctionSpace(mesh, "DG", args.degree - 1)
     W = RT * DG
 
     sigma, u = TrialFunctions(W)
@@ -87,9 +87,15 @@ def run_gtmg_mixed_poisson(args):
                                                      'pc_type': 'jacobi',
                                                      'ksp_max_it': 3},
                                        'mg_coarse': coarse_params}}}
+
     appctx = {'get_coarse_operator': p1_callback,
               'get_coarse_space': get_p1_space,
               'coarse_space_bcs': get_p1_prb_bcs()}
+    if args.custom_transfer:
+        V_trace = FunctionSpace(mesh, "HDiv Trace", args.degree)
+        interp_matrix = transfer_kernels.prolongation_matrix(V_trace,
+                                                             get_p1_space())
+        appctx['interpolation_matrix'] = interp_matrix
 
     solve(a == L, w, solver_parameters=params, appctx=appctx)
     _, uh = w.split()
@@ -103,10 +109,22 @@ if __name__ == '__main__':
     ''' === M A I N ==== '''
     # Parse command line options
     parser = argparse.ArgumentParser(allow_abbrev=False)
+    # coarse level solver
     parser.add_argument('--coarse_solver',
                         choices=(None,'exact','amg','gmg'),
                         default='gmg',
                         help='select coarse solver to use on nonnested coarse system')
+    # use custom transfer operators from transfer_kernels.py?
+    parser.add_argument('--custom_transfer',
+                        action='store_true',
+                        default=False,
+                        help='use custom transer operators from transfer_kernels.py?')
+    # Polynomial degree of velocity space
+    parser.add_argument('--degree',
+                        type=int,
+                        default=1,
+                        help='polynomial degree of velocity space')
+
     args, _ = parser.parse_known_args()
     # solve mixed Poisson problem
     run_gtmg_mixed_poisson(args)
