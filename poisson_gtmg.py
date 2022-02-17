@@ -1,6 +1,7 @@
 from firedrake import *
 import argparse
 import transfer_kernels
+from ksp_monitor import *
 
 '''
 =======================================================
@@ -20,7 +21,7 @@ def run_gtmg_mixed_poisson(args):
     if (args.mesh == 'unitsquare'):
         m = UnitSquareMesh(10, 10)
     elif (args.mesh == 'icosahedralsphere'):
-        m = IcosahedralSphereMesh(radius=1.0,refinement_level=2)
+        m = IcosahedralSphereMesh(radius=1.0,refinement_level=2,degree=3)
     else:
         raise Exception('Unknown mesh: ' + args.mesh)
     nlevels = 2
@@ -105,7 +106,15 @@ def run_gtmg_mixed_poisson(args):
                                                              get_p1_space())
         appctx['interpolation_matrix'] = interp_matrix
 
-    solve(a == L, w, solver_parameters=params, appctx=appctx)
+    ksp_monitor = KSPMonitor(label='hybridised_linear_solve',
+                             comm=mesh.comm,
+                             verbose=2)
+    appctx['custom_monitor'] = ksp_monitor
+
+    with ksp_monitor:
+
+        solve(a == L, w, solver_parameters=params, appctx=appctx)
+
     _, uh = w.split()
 
     # Analytical solution
@@ -126,7 +135,7 @@ if __name__ == '__main__':
     parser.add_argument('--custom_transfer',
                         action='store_true',
                         default=False,
-                        help='use custom transer operators from transfer_kernels.py?')
+                        help='use custom transfer operators from transfer_kernels.py?')
     # Polynomial degree of velocity space
     parser.add_argument('--degree',
                         type=int,

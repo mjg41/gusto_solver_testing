@@ -94,10 +94,10 @@ day = 24.*60.*60.
 
 # setup resolution and timestepping parameters for convergence test
 if not args.conv_study:
-    ref_dt = {args.nrefine: 3000.}
+    ref_dt = {args.nrefine: 12000.}
     # tmax = 3000.
     # ref_dt = {args.nrefine: 500.}
-    tmax = day
+    tmax = args.tfinal*day
 
 else:
     # setup resolution and timestepping parameters for convergence test
@@ -160,6 +160,7 @@ elif (args.solver == 'hybridised_amg'):
 elif (args.solver == 'hybridised_nonnested'):
     if (args.coarse_solver == 'exact'):
         coarse_param = {'ksp_type': 'preonly',
+                        'ksp_monitor': None,
                         'pc_type': 'lu'}
     elif (args.coarse_solver == 'amg'):
         coarse_param = {'ksp_type': 'preonly',
@@ -185,22 +186,36 @@ elif (args.solver == 'hybridised_nonnested'):
     else:
         raise Exception('Unknown coarse solver type: ' + args.coarse_solver)            
     
-    solver_parameters = {'ksp_type': 'preonly',
-                         'mat_type': 'matfree',
-                         'pc_type': 'python',
-                         'pc_python_type': 'firedrake.HybridizationPC',
-                         # Solver for the trace system
-                         'hybridization': {'ksp_type': 'bcgs',
-                                           'pc_type': 'python',
-                                           'ksp_rtol': args.solver_rtol,
-                                           'pc_python_type': 'firedrake.GTMGPC',
-                                           'gt': {'mat_type': 'aij',
-                                                  'pc_mg_log': None,
-                                                  'mg_levels': {'ksp_type': 'chebyshev',
-                                                                #'ksp_richardson_scale':0.6,
-                                                                'ksp_max_it': 2,
-                                                                'pc_type': 'sor'},
-                                                  'mg_coarse': coarse_param}}}
+    # solver_parameters = {'ksp_type': 'preonly',
+    #                      'mat_type': 'matfree',
+    #                      'pc_type': 'python',
+    #                      'pc_python_type': 'firedrake.HybridizationPC',
+    #                      # Solver for the trace system
+    #                      'hybridization': {'ksp_type': 'bcgs',
+    #                                        'pc_type': 'python',
+    #                                        'ksp_rtol': args.solver_rtol,
+    #                                        'pc_python_type': 'firedrake.GTMGPC',
+    #                                        'gt': {'mat_type': 'aij',
+    #                                               'pc_mg_log': None,
+    #                                               'mg_levels': {'ksp_type': 'chebyshev',
+    #                                                             #'ksp_richardson_scale':0.6,
+    #                                                             'ksp_max_it': 2,
+    #                                                             'pc_type': 'sor'},
+    #                                               'mg_coarse': coarse_param}}}
+
+    solver_parameters = {'mat_type': 'matfree',
+            'ksp_type': 'preonly',
+            'pc_type': 'python',
+            'pc_python_type': 'firedrake.HybridizationPC',
+            'hybridization': {'ksp_type': 'cg',
+                            'mat_type': 'matfree',
+                            'ksp_monitor':None,
+                            'pc_type': 'python',
+                            'pc_python_type': 'firedrake.GTMGPC',
+                            'gt': {'mg_levels': {'ksp_type': 'chebyshev',
+                                                    'pc_type': 'jacobi',
+                                                    'ksp_max_it': 3},
+                                    'mg_coarse': coarse_param}}}
 else:
     raise Exception('Unknown solver type: '+args.solver)
 
@@ -313,9 +328,12 @@ for ref_level, dt in ref_dt.items():
         V_trace = FunctionSpace(mesh, "HDiv Trace", args.degree)
         interpolation_matrix = prolongation_matrix(V_trace,get_coarse_space())
 
+        # appctx = {'get_coarse_operator': coarse_callback,
+        #           'get_coarse_space': get_coarse_space,
+        #           'interpolation_matrix':interpolation_matrix}
+
         appctx = {'get_coarse_operator': coarse_callback,
-                  'get_coarse_space': get_coarse_space,
-                  'interpolation_matrix':interpolation_matrix}
+                  'get_coarse_space': get_coarse_space}
 
     # interpolate initial conditions
     u0 = state.fields("u")
