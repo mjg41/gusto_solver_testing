@@ -17,12 +17,20 @@ def run_gtmg_mixed_poisson(args):
 
     :arg args: command line arguments controlling solver options
     '''
-
-    m = UnitSquareMesh(10, 10)
+    if (args.mesh == 'unitsquare'):
+        m = UnitSquareMesh(10, 10)
+    elif (args.mesh == 'icosahedralsphere'):
+        m = IcosahedralSphereMesh(radius=1.0,refinement_level=2)
+    else:
+        raise Exception('Unknown mesh: ' + args.mesh)
     nlevels = 2
     mh = MeshHierarchy(m, nlevels)
     mesh = mh[-1]
     x = SpatialCoordinate(mesh)
+
+    # Orient spherical mesh
+    if ('sphere' in args.mesh):
+        mesh.init_cell_orientations(x)
 
     def get_p1_space():
         return FunctionSpace(mesh, "CG", 1)
@@ -34,7 +42,7 @@ def run_gtmg_mixed_poisson(args):
         P1 = get_p1_space()
         p = TrialFunction(P1)
         q = TestFunction(P1)
-        return inner(grad(p), grad(q))*dx
+        return (p*q + inner(grad(p), grad(q)))*dx
 
     RT = FunctionSpace(mesh, "RT", args.degree)
     DG = FunctionSpace(mesh, "DG", args.degree - 1)
@@ -46,7 +54,7 @@ def run_gtmg_mixed_poisson(args):
     f = Function(DG)
     f.interpolate(-2*(x[0]-1)*x[0] - 2*(x[1]-1)*x[1])
 
-    a = (inner(sigma, tau) - inner(u, div(tau)) + inner(div(sigma), v))*dx
+    a = (inner(sigma, tau) - inner(u, div(tau)) + inner(div(sigma), v) + inner(u,v))*dx
     L = inner(f, v)*dx
 
     w = Function(W)
@@ -111,7 +119,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(allow_abbrev=False)
     # coarse level solver
     parser.add_argument('--coarse_solver',
-                        choices=(None,'exact','amg','gmg'),
+                        choices=('exact','amg','gmg'),
                         default='gmg',
                         help='select coarse solver to use on nonnested coarse system')
     # use custom transfer operators from transfer_kernels.py?
@@ -124,7 +132,18 @@ if __name__ == '__main__':
                         type=int,
                         default=1,
                         help='polynomial degree of velocity space')
+    # Mesh to use
+    parser.add_argument('--mesh',
+                        choices=('unitsquare','icosahedralsphere'),
+                        default='unitsquare',
+                        help='mesh to use')
 
     args, _ = parser.parse_known_args()
+    print ('===== parameters =====')
+    print ('coarse solver    = ',args.coarse_solver)
+    print ('degree           = ',args.degree)
+    print ('mesh             = ',args.custom_transfer)
+    print ('custom transfer? = ',args.mesh)
+    print ('')
     # solve mixed Poisson problem
     run_gtmg_mixed_poisson(args)
