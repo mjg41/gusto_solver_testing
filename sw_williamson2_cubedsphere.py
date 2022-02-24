@@ -204,7 +204,8 @@ elif (args.solver == 'hybridised_nonnested'):
     #                                               'mg_coarse': coarse_param}}}
 
     solver_parameters = {'mat_type': 'matfree',
-            'ksp_type': 'preonly',
+            'ksp_type': 'gmres',
+            'ksp_monitor_true_residual': None,
             'pc_type': 'python',
             'pc_python_type': 'firedrake.HybridizationPC',
             'hybridization': {'ksp_type': 'cg',
