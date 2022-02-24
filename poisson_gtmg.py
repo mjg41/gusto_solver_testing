@@ -3,6 +3,10 @@ import argparse
 import transfer_kernels
 from ksp_monitor import *
 
+
+from firedrake.petsc import PETSc
+PETSc.Sys.popErrorHandler()
+
 '''
 =======================================================
 GTMG solve of the mixed Poisson equation
@@ -20,18 +24,19 @@ def run_gtmg_mixed_poisson(args):
     '''
     if (args.mesh == 'unitsquare'):
         m = UnitSquareMesh(10, 10)
-        zero_order_term = False
+        # zero_order_term = False
     elif (args.mesh == 'square'):
-        L=1000.
+        L=10000.
         m = SquareMesh(10, 10, L)
-        zero_order_term = False
+        # zero_order_term = False
         h = m.cell_sizes([L/2,L/2]) # get example delta-x from middle of domain
     elif (args.mesh == 'icosahedralsphere'):
         R = 1.
         m = IcosahedralSphereMesh(radius=R, refinement_level=2, degree=3)
-        zero_order_term = True
+        # zero_order_term = False
     else:
         raise Exception('Unknown mesh: ' + args.mesh)
+
     nlevels = 2
     mh = MeshHierarchy(m, nlevels)
     mesh = mh[-1]
@@ -51,7 +56,7 @@ def run_gtmg_mixed_poisson(args):
         P1 = get_p1_space()
         p = TrialFunction(P1)
         q = TestFunction(P1)
-        return (p*q + inner(grad(p), grad(q)))*dx
+        return (p*q + h**2*inner(grad(p), grad(q)))*dx
 
     RT = FunctionSpace(mesh, "RT", args.degree)
     DG = FunctionSpace(mesh, "DG", args.degree - 1)
@@ -63,10 +68,7 @@ def run_gtmg_mixed_poisson(args):
     f = Function(DG)
     f.interpolate(-2*(x[0]-1)*x[0] - 2*(x[1]-1)*x[1])
 
-    if zero_order_term:
-        a = (inner(sigma, tau) - inner(u, div(tau)) + inner(div(sigma), v) + inner(u,v))*dx
-    else:
-        a = (inner(sigma, tau) - inner(u, div(tau)) + inner(div(sigma), v))*dx
+    a = (inner(sigma, tau) - h*inner(u, div(tau)) + h*inner(div(sigma), v) + inner(u,v))*dx
     L = inner(f, v)*dx
 
     w = Function(W)
@@ -121,6 +123,12 @@ def run_gtmg_mixed_poisson(args):
                              comm=mesh.comm,
                              verbose=2)
     appctx['custom_monitor'] = ksp_monitor
+
+    # Provide a callback to construct the trace nullspace
+    # def nullspace_basis(T):
+    #     return VectorSpaceBasis(constant=True)
+
+    # appctx['trace_nullspace'] =  nullspace_basis
 
     with ksp_monitor:
 
