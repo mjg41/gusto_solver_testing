@@ -20,8 +20,16 @@ def run_gtmg_mixed_poisson(args):
     '''
     if (args.mesh == 'unitsquare'):
         m = UnitSquareMesh(10, 10)
+        zero_order_term = False
+    elif (args.mesh == 'square'):
+        L=1000.
+        m = SquareMesh(10, 10, L)
+        zero_order_term = False
+        h = m.cell_sizes([L/2,L/2]) # get example delta-x from middle of domain
     elif (args.mesh == 'icosahedralsphere'):
-        m = IcosahedralSphereMesh(radius=1.0,refinement_level=2,degree=3)
+        R = 1.
+        m = IcosahedralSphereMesh(radius=R, refinement_level=2, degree=3)
+        zero_order_term = True
     else:
         raise Exception('Unknown mesh: ' + args.mesh)
     nlevels = 2
@@ -55,14 +63,17 @@ def run_gtmg_mixed_poisson(args):
     f = Function(DG)
     f.interpolate(-2*(x[0]-1)*x[0] - 2*(x[1]-1)*x[1])
 
-    a = (inner(sigma, tau) - inner(u, div(tau)) + inner(div(sigma), v) + inner(u,v))*dx
+    if zero_order_term:
+        a = (inner(sigma, tau) - inner(u, div(tau)) + inner(div(sigma), v) + inner(u,v))*dx
+    else:
+        a = (inner(sigma, tau) - inner(u, div(tau)) + inner(div(sigma), v))*dx
     L = inner(f, v)*dx
 
     w = Function(W)
 
     if (args.coarse_solver == 'exact'):
         coarse_params = {'ksp_type': 'preonly',
-                         #'ksp_monitor':None,
+                         'ksp_monitor':None,
                          'pc_type': 'lu'}
     elif (args.coarse_solver == 'amg'):
         coarse_params = {'ksp_type': 'preonly',
@@ -143,7 +154,7 @@ if __name__ == '__main__':
                         help='polynomial degree of velocity space')
     # Mesh to use
     parser.add_argument('--mesh',
-                        choices=('unitsquare','icosahedralsphere'),
+                        choices=('unitsquare','icosahedralsphere','square'),
                         default='unitsquare',
                         help='mesh to use')
 
@@ -151,8 +162,8 @@ if __name__ == '__main__':
     print ('===== parameters =====')
     print ('coarse solver    = ',args.coarse_solver)
     print ('degree           = ',args.degree)
-    print ('mesh             = ',args.custom_transfer)
-    print ('custom transfer? = ',args.mesh)
+    print ('mesh             = ',args.mesh)
+    print ('custom transfer? = ',args.custom_transfer)
     print ('')
     # solve mixed Poisson problem
     run_gtmg_mixed_poisson(args)
