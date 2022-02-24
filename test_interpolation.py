@@ -54,10 +54,13 @@ f_data = f.dat.data
 prolong = interp_mat_scipy*f_data
 restrict = interp_mat_scipy.T*prolong
 
+# Factor 4 missing (4 corner dofs per trace dof), based on doing transpose rather than averaging
+restrict /= 4.0
+
 # Compare by plotting f_data and prolongated & restricted data
 
-plt.plot(f_data, label='Original function')
-plt.plot(restrict, label='After Prolongation & Restriction')
+plt.plot(f_data, 'b--', label='Original function')
+plt.plot(restrict, 'r--', label='After Prolongation & Restriction', alpha=0.5)
 plt.xlabel('dofs')
 plt.ylabel('dof values')
 plt.legend()
