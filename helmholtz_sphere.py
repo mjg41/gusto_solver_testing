@@ -23,7 +23,8 @@ def run_gtmg_helmholtz(args):
 
     :arg args: command line arguments controlling solver options
     '''
-    R = 6371220.
+    R = 1.
+    # R = 6371220.
     mesh = CubedSphereMesh(radius=R, refinement_level=args.nrefine, degree=3)
 
     # Compute mesh properties
@@ -41,7 +42,8 @@ def run_gtmg_helmholtz(args):
 
     f = Function(Q)
     f.interpolate(cos((x[0]/R) + sin(x[0]/R) + cos(x[0]/R)*sin(x[0]/R)))
-    a = (inner(p, q) - h*inner(div(u), q) + inner(u, v) + h*inner(p, div(v))) * dx
+    # ~ a = (inner(p, q) - h*inner(div(u), q) + inner(u, v) + h*inner(p, div(v))) * dx
+    a = (inner(p, q) - inner(div(u), q) + inner(u, v) + inner(p, div(v))) * dx
     L = inner(f, q) * dx
 
     w = Function(W)
@@ -53,7 +55,8 @@ def run_gtmg_helmholtz(args):
         P1 = get_p1_space()
         p = TrialFunction(P1)
         q = TestFunction(P1)
-        return 1E-6*(p*q + h**2*inner(grad(p), grad(q)))*dx
+        # return (p*q + h**2*inner(grad(p), grad(q)))*dx
+        return (p*q + inner(grad(p), grad(q)))*dx
 
     if (args.coarse_solver == 'exact'):
         coarse_params = {'ksp_type': 'preonly',
@@ -79,7 +82,8 @@ def run_gtmg_helmholtz(args):
         raise Exception('Unknown coarse solver type: ' + args.coarse_solver)
 
     params = {'mat_type': 'matfree',
-              'ksp_type': 'preonly',
+              'ksp_type': 'gmres',
+              'ksp_monitor_true_residual': None,
               'pc_type': 'python',
               'pc_python_type': 'firedrake.HybridizationPC',
               'hybridization': {'ksp_type': 'cg',
